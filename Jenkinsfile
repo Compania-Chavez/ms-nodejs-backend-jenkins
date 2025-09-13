@@ -117,7 +117,7 @@ pipeline {
                 script {
                     env.ENV = "dev"
                     env.API_PROVIDER_URL = "http://dev.api.com"
-                    env.APP_NAME = "aca-ms-${APELLIDO}-${ENV}"
+                    env.APP_NAME = "aca-env-${APELLIDO}-${ENV}"
                 }
                 sh '''
                   echo ">>> Configurando ACR credentials para Container App..."

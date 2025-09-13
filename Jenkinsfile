@@ -4,8 +4,7 @@ pipeline {
     }
 
     environment {
-        NODE_VERSION = "20"
-        APELLIDO = "chavez" // Reemplazar por tu apellido
+        APELLIDO = "chavez"
         SHORT_SHA = "${env.GIT_COMMIT[0..6]}"
         IMAGE_NAME = "acr${APELLIDO}.azurecr.io/my-nodejs-app"
         TAG = "${SHORT_SHA}"
@@ -14,60 +13,9 @@ pipeline {
         ACR_NAME = "acr${APELLIDO}"
     }
 
-    stages {       
-        stage('Hello world') {
-            steps {
-                script { 
-                    // Declarar más variables de entorno
-                    env.VARIABLE = "demo123"
-                }
-                // Primer step
-                sh '''
-                  echo ">>> Impresión Hello world"
-                  echo "Hello world"
-                  echo "Variable declarada en script: $VARIABLE"
-                  echo "Variable declarada en environment: $APELLIDO"
-                '''
-                // Step adicional
-                sh '''
-                  echo ">>> Versiones instaladas:"
-                  node -v
-                  npm -v
-                  docker --version
-                  az version
-                '''
-            }
-        }
+    stages {
 
-        stage('[CI] Instalar dependencias') {
-            steps {
-                checkout scm
-                // Instalar dependencias
-                sh '''
-                  npm install
-                '''
-            }
-        }
-
-        stage('[CI] Ejecutar pruebas unitarias') {
-            steps {
-                // Ejecutar pruebas unitarias
-                sh '''
-                  npm run test:unit
-                '''
-            }
-        }
-
-        stage('[CI] Ejecutar pruebas de integración') {
-            steps {
-                // Ejecutar pruebas de integración
-                sh '''
-                  npm run test:integration
-                '''
-            }
-        }
-
-        stage('[CI] Azure Login') {
+        stage('Azure Login') {
             steps {
                 withCredentials([
                     string(credentialsId: 'azure-clientId',        variable: 'AZ_CLIENT_ID'),
@@ -87,32 +35,56 @@ pipeline {
                 }
             }
         }
-
-        stage('[CI] Docker Login') {
+        
+        stage('Instalar dependencias') {
             steps {
-                // Login a ACR
                 sh '''
-                  az acr login --name $ACR_NAME
+                  echo ">>> Instalar dependencias"
+                  npm install
                 '''
             }
         }
 
-        stage('[CI] Build and Push Docker Image') {
+        
+        stage('Pruebas unitarias') {
             steps {
-                // build image
                 sh '''
-                  echo "Construyendo imagen $IMAGE"
-                  docker build -t $IMAGE .
+                  echo ">>> Pruebas unitarias"
+                  npm run test:unit
                 '''
-                // push image
+            }
+        }
+
+        
+        stage('Pruebas de integración') {
+            steps {
                 sh '''
-                  echo "Pushing imagen $IMAGE"
+                  echo ">>> Pruebas de integración"
+                  npm run test:integration
+                '''
+            }
+        }
+        
+        stage('ACR Login') {
+            steps {
+                sh '''
+                  echo ">>> ACR Login"
+                  az acr login --name $ACR_NAME
+                '''
+            }
+        }
+        
+        stage('Build Docker Image') {
+            steps {
+                sh '''
+                  echo ">>> Construyendo imagen $IMAGE"
+                  docker build -t $IMAGE .
                   docker push $IMAGE
                 '''
             }
         }
         
-        stage('[CD][dev] Configurar ACR credentials para Container App') {
+        stage('Deploy to DEV') {
             steps {
                 script {
                     env.ENV = "dev"
@@ -128,41 +100,13 @@ pipeline {
                     --resource-group $RESOURCE_GROUP \
                     --server $ACR_SERVER \
                     --identity system
-                '''
-            }
-        }
 
-        stage('[CD][dev] Deploy a Azure Container App') {
-            steps {
-                script {
-                    env.ENV = "dev"
-                    env.API_PROVIDER_URL = "http://dev.api.com"
-                    env.APP_NAME = "aca-ms-${APELLIDO}-${ENV}"
-                }
-                sh '''
                   echo ">>> Desplegando en $ENV"
                   az containerapp update \
                     --name $APP_NAME \
                     --resource-group $RESOURCE_GROUP \
                     --image $IMAGE \
                     --set-env-vars ENV=$ENV API_PROVIDER_URL=$API_PROVIDER_URL
-                '''
-            }
-        }
-
-        stage('[CD][dev] Imprimir endpoint del Container App') {
-            steps {
-                script {
-                    env.ENV = "dev"
-                    env.API_PROVIDER_URL = "http://dev.api.com"
-                    env.APP_NAME = "aca-ms-${APELLIDO}-${ENV}"
-                }
-                sh '''
-                  ENDPOINT=$(az containerapp show \
-                    --name $APP_NAME \
-                    --resource-group $RESOURCE_GROUP \
-                    --query properties.configuration.ingress.fqdn -o tsv)
-                  echo "Endpoint del Container App ($ENV): https://$ENDPOINT"
                 '''
             }
         }
@@ -173,12 +117,12 @@ pipeline {
             }
         }
 
-        stage('[CD][qa] Configurar ACR credentials para Container App') {
+        stage('Deploy to QA') {
             steps {
                 script {
                     env.ENV = "qa"
                     env.API_PROVIDER_URL = "http://qa.api.com"
-                    env.APP_NAME = "aca-ms-${APELLIDO}-${ENV}"
+                    env.APP_NAME = "aca-env-${APELLIDO}-${ENV}"
                 }
                 sh '''
                   echo ">>> Configurando ACR credentials para Container App..."
@@ -189,18 +133,7 @@ pipeline {
                     --resource-group $RESOURCE_GROUP \
                     --server $ACR_SERVER \
                     --identity system
-                '''
-            }
-        }
 
-        stage('[CD][qa] Deploy a Azure Container App') {
-            steps {
-                script {
-                    env.ENV = "qa"
-                    env.API_PROVIDER_URL = "http://qa.api.com"
-                    env.APP_NAME = "aca-ms-${APELLIDO}-${ENV}"
-                }
-                sh '''
                   echo ">>> Desplegando en $ENV"
                   az containerapp update \
                     --name $APP_NAME \
@@ -211,35 +144,18 @@ pipeline {
             }
         }
 
-        stage('[CD][qa] Imprimir endpoint del Container App') {
-            steps {
-                script {
-                    env.ENV = "qa"
-                    env.API_PROVIDER_URL = "http://qa.api.com"
-                    env.APP_NAME = "aca-ms-${APELLIDO}-${ENV}"
-                }
-                sh '''
-                  ENDPOINT=$(az containerapp show \
-                    --name $APP_NAME \
-                    --resource-group $RESOURCE_GROUP \
-                    --query properties.configuration.ingress.fqdn -o tsv)
-                  echo "Endpoint del Container App ($ENV): https://$ENDPOINT"
-                '''
-            }
-        }
-        
         stage('Approval PRD') {
             steps {
                 input message: "Aprobar despliegue en PRD?"
             }
         }
 
-        stage('[CD][prd] Configurar ACR credentials para Container App') {
+        stage('Deploy to PRD') {
             steps {
                 script {
                     env.ENV = "prd"
                     env.API_PROVIDER_URL = "http://prd.api.com"
-                    env.APP_NAME = "aca-ms-${APELLIDO}-${ENV}"
+                    env.APP_NAME = "aca-env-${APELLIDO}-${ENV}"
                 }
                 sh '''
                   echo ">>> Configurando ACR credentials para Container App..."
@@ -250,18 +166,7 @@ pipeline {
                     --resource-group $RESOURCE_GROUP \
                     --server $ACR_SERVER \
                     --identity system
-                '''
-            }
-        }
 
-        stage('[CD][prd] Deploy a Azure Container App') {
-            steps {
-                script {
-                    env.ENV = "prd"
-                    env.API_PROVIDER_URL = "http://prd.api.com"
-                    env.APP_NAME = "aca-ms-${APELLIDO}-${ENV}"
-                }
-                sh '''
                   echo ">>> Desplegando en $ENV"
                   az containerapp update \
                     --name $APP_NAME \
@@ -272,13 +177,8 @@ pipeline {
             }
         }
 
-        stage('[CD][prd] Imprimir endpoint del Container App') {
+        stage('Print Endpoint') {
             steps {
-                script {
-                    env.ENV = "prd"
-                    env.API_PROVIDER_URL = "http://prd.api.com"
-                    env.APP_NAME = "aca-ms-${APELLIDO}-${ENV}"
-                }
                 sh '''
                   ENDPOINT=$(az containerapp show \
                     --name $APP_NAME \
@@ -288,5 +188,5 @@ pipeline {
                 '''
             }
         }
-    }   
+    }
 }
